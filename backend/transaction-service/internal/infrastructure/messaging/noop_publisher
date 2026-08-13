@@ -1,0 +1,10 @@
+package messaging
+
+import "context"
+
+type NoopPublisher struct{}
+
+func (p NoopPublisher) Publish(ctx context.Context, event interface{}) error {
+	// Просто логируем или игнорируем
+	return nil
+}
