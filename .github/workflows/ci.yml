@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  GO_VERSION: '1.26.0'
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+
+      - name: Verify Go version
+        run: go version
+
+      - name: Purge all caches
+        run: |
+          go clean -modcache
+          go clean -cache
+          rm -rf ~/.cache/go-build
+          rm -rf ~/go/pkg/mod
+
+      - name: Tidy modules and create workspace
+        run: |
+          cd backend
+          rm -f go.work go.work.sum
+          for dir in api-gateway auth-service transaction-service notification-service shared; do
+            (cd $dir && go mod tidy)
+          done
+          go work init ./api-gateway ./auth-service ./transaction-service ./notification-service ./shared
+          go work sync
+
+      - name: Install golangci-lint
+        run: |
+          go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
+          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
+
+      - name: Clear golangci-lint cache
+        run: |
+          golangci-lint cache clean || true
+          rm -rf ~/.cache/golangci-lint
+
+      - name: Run linters for each module
+        run: |
+          cd backend
+          for dir in api-gateway auth-service transaction-service notification-service shared; do
+            echo "Linting $dir..."
+            golangci-lint run --go=1.26 ./$dir/...
+          done
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+
+      - name: Purge caches
+        run: |
+          go clean -modcache
+          go clean -cache
+          rm -rf ~/.cache/go-build
+          rm -rf ~/go/pkg/mod
+
+      - name: Tidy modules
+        run: |
+          cd backend
+          rm -f go.work go.work.sum
+          for dir in api-gateway auth-service transaction-service notification-service shared; do
+            (cd $dir && go mod tidy)
+          done
+          go work init ./api-gateway ./auth-service ./transaction-service ./notification-service ./shared
+          go work sync
+
+      - name: Run tests
+        run: |
+          cd backend
+          for dir in api-gateway auth-service transaction-service notification-service shared; do
+            echo "Testing $dir..."
+            (cd $dir && go test -v -race -coverprofile=coverage_$dir.out ./...)
+          done
+          # Объединяем coverage в один файл для артефакта
+          echo "mode: set" > coverage.out
+          for f in backend/coverage_*.out; do tail -n +2 "$f" >> coverage.out 2>/dev/null || true; done
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: backend/coverage.out
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+
+      - name: Purge caches
+        run: |
+          go clean -modcache
+          go clean -cache
+          rm -rf ~/.cache/go-build
+          rm -rf ~/go/pkg/mod
+
+      - name: Tidy modules
+        run: |
+          cd backend
+          rm -f go.work go.work.sum
+          for dir in api-gateway auth-service transaction-service notification-service shared; do
+            (cd $dir && go mod tidy)
+          done
+          go work init ./api-gateway ./auth-service ./transaction-service ./notification-service ./shared
+          go work sync
+
+      - name: Build all services
+        run: cd backend && make build

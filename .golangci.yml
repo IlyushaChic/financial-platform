@@ -1,0 +1,40 @@
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - unused
+    - gosimple
+    - errcheck
+    - ineffassign
+    - typecheck
+    - gofmt
+    - goimports
+    - revive
+    - misspell
+    - unparam
+    - prealloc
+    - gocritic
+    - gosec
+    - noctx
+    - whitespace
+
+linters-settings:
+  govet:
+    enable-all: true
+    disable:
+      - shadow
+      - fieldalignment
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+        disabled: false
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
