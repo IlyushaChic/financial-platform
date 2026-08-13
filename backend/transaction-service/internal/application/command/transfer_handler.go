@@ -13,10 +13,11 @@ import (
 	"github.com/IlyushaChic/financial-platform/backend/transaction-service/internal/domain/money"
 	"github.com/IlyushaChic/financial-platform/backend/transaction-service/internal/domain/transaction"
 	"github.com/IlyushaChic/financial-platform/backend/transaction-service/internal/infrastructure/messaging"
+	"github.com/IlyushaChic/financial-platform/backend/transaction-service/internal/infrastructure/messaging/rabbitmq"
 	"github.com/google/uuid"
 )
 
-// TransferCommand содержит данные для перевода
+// TransferCommand ...
 type TransferCommand struct {
 	FromAccountID string
 	ToAccountID   string
@@ -25,35 +26,38 @@ type TransferCommand struct {
 	Description   string
 }
 
-// TransferHandler обрабатывает перевод средств
+// TransferHandler ...
 type TransferHandler struct {
-	accountRepo     account.Repository
-	transactionRepo transaction.Repository
-	locker          locker.Locker
-	db              *sql.DB
-	publisher       messaging.EventPublisher
+	accountRepo          account.Repository
+	transactionRepo      transaction.Repository
+	locker               locker.Locker
+	db                   *sql.DB
+	eventPublisher       messaging.EventPublisher
+	notificationProducer *rabbitmq.Producer
 }
 
-// NewTransferHandler создаёт новый экземпляр
+// NewTransferHandler ...
 func NewTransferHandler(
 	accountRepo account.Repository,
 	transactionRepo transaction.Repository,
 	locker locker.Locker,
 	db *sql.DB,
-	publisher messaging.EventPublisher,
+	eventPublisher messaging.EventPublisher,
+	notificationProducer *rabbitmq.Producer,
 ) *TransferHandler {
 	return &TransferHandler{
-		accountRepo:     accountRepo,
-		transactionRepo: transactionRepo,
-		locker:          locker,
-		db:              db,
-		publisher:       publisher,
+		accountRepo:          accountRepo,
+		transactionRepo:      transactionRepo,
+		locker:               locker,
+		db:                   db,
+		eventPublisher:       eventPublisher,
+		notificationProducer: notificationProducer,
 	}
 }
 
-// Handle выполняет перевод
+// Handle ...
 func (h *TransferHandler) Handle(ctx context.Context, cmd TransferCommand) (*transaction.Transaction, error) {
-	// ----- 1. Валидация -----
+	// 1. Валидация
 	if cmd.FromAccountID == cmd.ToAccountID {
 		return nil, errors.New("cannot transfer to same account")
 	}
@@ -66,22 +70,22 @@ func (h *TransferHandler) Handle(ctx context.Context, cmd TransferCommand) (*tra
 		return nil, err
 	}
 
-	// ----- 2. Блокировка на счёте отправителя -----
+	// 2. Блокировка
 	lockKey := fmt.Sprintf("account:%s", cmd.FromAccountID)
 	lock, err := h.locker.Lock(ctx, lockKey, 10*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire lock: %w", err)
 	}
-	defer lock.Unlock(ctx) // освобождаем после завершения
+	defer lock.Unlock(ctx)
 
-	// ----- 3. Транзакция БД -----
+	// 3. Транзакция БД
 	tx, err := h.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 	if err != nil {
 		return nil, err
 	}
-	defer tx.Rollback() // если не закоммитим, откатится
+	defer tx.Rollback()
 
-	// ----- 4. Получаем счета с FOR UPDATE -----
+	// 4. Получаем счета с FOR UPDATE
 	fromAcc, err := h.accountRepo.GetAccountForUpdate(ctx, tx, cmd.FromAccountID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get from account: %w", err)
@@ -91,7 +95,7 @@ func (h *TransferHandler) Handle(ctx context.Context, cmd TransferCommand) (*tra
 		return nil, fmt.Errorf("failed to get to account: %w", err)
 	}
 
-	// ----- 5. Проверка валют и баланса -----
+	// 5. Проверка валют и баланса
 	if fromAcc.Balance.Currency != toAcc.Balance.Currency {
 		return nil, errors.New("currency mismatch between accounts")
 	}
@@ -102,7 +106,7 @@ func (h *TransferHandler) Handle(ctx context.Context, cmd TransferCommand) (*tra
 		return nil, money.ErrInsufficientBalance
 	}
 
-	// ----- 6. Обновление балансов -----
+	// 6. Обновление балансов
 	if err := fromAcc.Withdraw(amountMoney); err != nil {
 		return nil, err
 	}
@@ -110,7 +114,7 @@ func (h *TransferHandler) Handle(ctx context.Context, cmd TransferCommand) (*tra
 		return nil, err
 	}
 
-	// ----- 7. Сохранение в БД -----
+	// 7. Сохранение в БД
 	if err := h.accountRepo.Update(ctx, tx, fromAcc); err != nil {
 		return nil, err
 	}
@@ -118,7 +122,6 @@ func (h *TransferHandler) Handle(ctx context.Context, cmd TransferCommand) (*tra
 		return nil, err
 	}
 
-	// Создаём транзакцию со статусом pending
 	txEntity := transaction.NewTransaction(
 		uuid.New().String(),
 		cmd.FromAccountID,
@@ -130,18 +133,13 @@ func (h *TransferHandler) Handle(ctx context.Context, cmd TransferCommand) (*tra
 		return nil, err
 	}
 
-	// ----- 8. Коммит БД-транзакции -----
+	// 8. Коммит
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
-	// ----- 9. После успешного коммита меняем статус на completed -----
+	// 9. После коммита: обновляем статус в памяти и в БД (опционально)
 	txEntity.Complete()
-	// Обновляем статус в БД (можно отдельным запросом, но мы можем сделать это асинхронно)
-	// Для простоты обновим сразу (в отдельной транзакции или просто игнорируем, если не критично)
-	// Можно сделать через отдельный репозиторий, но здесь мы просто вызовем Update внутри новой транзакции
-	// (в целях упрощения можно пропустить, потому что Complete меняет статус в памяти, но в БД останется pending, если мы не обновим)
-	// Добавим обновление статуса отдельно:
 	updateCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	updateTx, err := h.db.BeginTx(updateCtx, nil)
@@ -150,19 +148,34 @@ func (h *TransferHandler) Handle(ctx context.Context, cmd TransferCommand) (*tra
 		_ = updateTx.Commit()
 	}
 
-	// ----- 10. Публикация события -----
-	event := event.TransactionCompletedEvent{
-		TransactionID: txEntity.ID,
-		FromAccountID: txEntity.FromAccountID,
-		ToAccountID:   txEntity.ToAccountID,
-		Amount:        txEntity.Amount.Amount,
-		Currency:      string(txEntity.Amount.Currency),
-		Description:   txEntity.Description,
-		CompletedAt:   time.Now(),
-	}
-	// Публикуем в фоне, чтобы не блокировать ответ
+	// 10. Публикация события Kafka (асинхронно)
 	go func() {
-		_ = h.publisher.Publish(context.Background(), event)
+		evt := event.TransactionCompletedEvent{
+			TransactionID: txEntity.ID,
+			FromAccountID: txEntity.FromAccountID,
+			ToAccountID:   txEntity.ToAccountID,
+			Amount:        txEntity.Amount.Amount,
+			Currency:      string(txEntity.Amount.Currency),
+			Description:   txEntity.Description,
+			CompletedAt:   time.Now(),
+		}
+		_ = h.eventPublisher.Publish(context.Background(), evt)
+	}()
+
+	// 11. Отправка уведомления в RabbitMQ (асинхронно)
+	go func() {
+		routingKey := "notification.email"
+		notificationData := map[string]interface{}{
+			"user_id":    "user-" + cmd.FromAccountID,
+			"amount":     cmd.Amount,
+			"currency":   cmd.Currency,
+			"type":       "transfer",
+			"timestamp":  time.Now().Format(time.RFC3339),
+			"to_account": cmd.ToAccountID,
+		}
+		if err := h.notificationProducer.Publish(context.Background(), routingKey, notificationData); err != nil {
+			// логируем ошибку (здесь можно добавить логгер)
+		}
 	}()
 
 	return txEntity, nil

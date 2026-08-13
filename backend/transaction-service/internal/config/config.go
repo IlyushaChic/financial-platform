@@ -7,32 +7,20 @@ import (
 	"time"
 )
 
-// Config содержит все настройки сервиса
 type Config struct {
-	// Server
-	GRPCPort string
-
-	// PostgreSQL
-	PostgresDSN string
-
-	// Redis
-	RedisAddr     string
-	RedisPassword string
-
-	// Kafka
-	KafkaBrokers []string
-	KafkaTopic   string
-
-	// ClickHouse (будет позже)
-	ClickHouseDSN string
-
-	// JWT (если понадобится)
+	GRPCPort          string
+	PostgresDSN       string
+	RedisAddr         string
+	RedisPassword     string
+	KafkaBrokers      []string
+	KafkaTopic        string
+	ClickHouseDSN     string
+	RabbitMQURL       string // <-- добавлено
 	JWTSecret         string
 	JWTExpiration     time.Duration
 	RefreshExpiration time.Duration
 }
 
-// Load загружает конфигурацию из переменных окружения или использует значения по умолчанию
 func Load() *Config {
 	return &Config{
 		GRPCPort:          getEnv("GRPC_PORT", "50052"),
@@ -42,6 +30,7 @@ func Load() *Config {
 		KafkaBrokers:      strings.Split(getEnv("KAFKA_BROKERS", "localhost:9092"), ","),
 		KafkaTopic:        getEnv("KAFKA_TOPIC", "transactions"),
 		ClickHouseDSN:     getEnv("CLICKHOUSE_DSN", "clickhouse://localhost:9000?username=default&password="),
+		RabbitMQURL:       getEnv("RABBITMQ_URL", "amqp://admin:admin@localhost:5672/"),
 		JWTSecret:         getEnv("JWT_SECRET", "transaction-service-secret-key"),
 		JWTExpiration:     time.Duration(getEnvAsInt("JWT_EXPIRATION", 15)) * time.Minute,
 		RefreshExpiration: time.Duration(getEnvAsInt("REFRESH_EXPIRATION", 720)) * time.Hour,

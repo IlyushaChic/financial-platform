@@ -1,0 +1,53 @@
+# Определения типов
+
+type User {
+  id: ID!
+  email: String!
+  fullName: String!
+}
+
+type Account {
+  id: ID!
+  userID: ID!
+  balance: Float!
+  currency: String!
+}
+
+type Transaction {
+  id: ID!
+  fromAccountID: ID!
+  toAccountID: ID!
+  amount: Float!
+  currency: String!
+  status: String!
+  description: String!
+  createdAt: String!
+}
+
+# Запросы
+type Query {
+  me: User!
+  balance(accountID: ID!): Account!
+  transactions(limit: Int, offset: Int): [Transaction!]!
+}
+
+# Мутации
+type Mutation {
+  register(email: String!, password: String!, fullName: String!): AuthPayload!
+  login(email: String!, password: String!): AuthPayload!
+  transfer(toAccountID: ID!, amount: Float!, currency: String!, description: String): Transaction!
+  deposit(accountID: ID!, amount: Float!, currency: String!, description: String): Transaction!
+}
+
+# Подписки
+type Subscription {
+  transactionCompleted: Transaction!
+}
+
+# Вспомогательные типы
+type AuthPayload {
+  accessToken: String!
+  refreshToken: String!
+  expiresIn: Int!
+  user: User!
+}

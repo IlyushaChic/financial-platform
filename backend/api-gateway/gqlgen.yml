@@ -1,0 +1,27 @@
+schema:
+  - internal/graphql/schema.graphqls
+exec:
+  filename: internal/graphql/generated/generated.go
+model:
+  filename: internal/graphql/generated/models_gen.go
+resolver:
+  layout: follow-schema
+  dir: internal/graphql/resolver
+  filename: internal/graphql/resolver/resolver.go
+  package: resolver
+models:
+  ID:
+    model:
+      - github.com/99designs/gqlgen/graphql.ID
+  Int:
+    model:
+      - github.com/99designs/gqlgen/graphql.Int
+  Float:
+    model:
+      - github.com/99designs/gqlgen/graphql.Float
+  String:
+    model:
+      - github.com/99designs/gqlgen/graphql.String
+  Boolean:
+    model:
+      - github.com/99designs/gqlgen/graphql.Boolean

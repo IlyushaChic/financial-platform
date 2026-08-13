@@ -1,0 +1,68 @@
+syntax = "proto3";
+
+package transaction;
+
+option go_package = "github.com/IlyushaChic/financial-platform/backend/transaction-service/proto;txpb";
+
+service TransactionService {
+    rpc Transfer(TransferRequest) returns (TransferResponse);
+    rpc Deposit(DepositRequest) returns (DepositResponse);
+    rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse);
+    rpc GetTransactions(GetTransactionsRequest) returns (GetTransactionsResponse);
+}
+
+message TransferRequest {
+    string from_account_id = 1;
+    string to_account_id = 2;
+    double amount = 3;
+    string currency = 4;
+    string description = 5;
+}
+
+message TransferResponse {
+    string transaction_id = 1;
+    string status = 2;
+}
+
+message DepositRequest {
+    string account_id = 1;
+    double amount = 2;
+    string currency = 3;
+    string description = 4;
+}
+
+message DepositResponse {
+    string transaction_id = 1;
+    string status = 2;
+}
+
+message GetBalanceRequest {
+    string account_id = 1;
+}
+
+message GetBalanceResponse {
+    string account_id = 1;
+    string user_id = 2;
+    double balance = 3;
+    string currency = 4;
+}
+
+message GetTransactionsRequest {
+    int32 limit = 1;
+    int32 offset = 2;
+}
+
+message GetTransactionsResponse {
+    repeated Transaction transactions = 1;
+}
+
+message Transaction {
+    string id = 1;
+    string from_account_id = 2;
+    string to_account_id = 3;
+    double amount = 4;
+    string currency = 5;
+    string status = 6;
+    string description = 7;
+    string created_at = 8;
+}
