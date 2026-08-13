@@ -88,3 +88,22 @@ func IncDatabaseQuery(driver, operation string) {
 func ObserveDatabaseQueryDuration(driver, operation string, seconds float64) {
 	DatabaseQueryDuration.WithLabelValues(driver, operation).Observe(seconds)
 }
+
+// GRPCRequestsTotal – общее количество gRPC запросов
+var GRPCRequestsTotal = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "grpc_requests_total",
+		Help: "Total number of gRPC requests",
+	},
+	[]string{"method", "status"},
+)
+
+// GRPCDuration – гистограмма длительности gRPC запросов
+var GRPCDuration = promauto.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name:    "grpc_request_duration_seconds",
+		Help:    "gRPC request duration in seconds",
+		Buckets: prometheus.DefBuckets,
+	},
+	[]string{"method"},
+)
