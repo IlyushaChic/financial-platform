@@ -2,61 +2,120 @@ package main
 
 import (
 	"context"
-	"net/http"
+	"database/sql"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
+	_ "github.com/lib/pq"
+	redisdb "github.com/redis/go-redis/v9"
+
 	"github.com/IlyushaChic/financial-platform/backend/shared/logger"
-	"github.com/IlyushaChic/financial-platform/backend/shared/metrics"
 	"github.com/IlyushaChic/financial-platform/backend/shared/tracer"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/IlyushaChic/financial-platform/backend/transaction-service/internal/application/command"
+	"github.com/IlyushaChic/financial-platform/backend/transaction-service/internal/config"
+	redisrepo "github.com/IlyushaChic/financial-platform/backend/transaction-service/internal/infrastructure/cache/redis"
+	"github.com/IlyushaChic/financial-platform/backend/transaction-service/internal/infrastructure/messaging/kafka"
+	clickhouserepo "github.com/IlyushaChic/financial-platform/backend/transaction-service/internal/infrastructure/persistence/clickhouse"
+	postgresrepo "github.com/IlyushaChic/financial-platform/backend/transaction-service/internal/infrastructure/persistence/postgres"
 )
 
 func main() {
-	logCfg := logger.Config{
-		Level: "debug",
-		JSON:  true,
-	}
-	logger := logger.New(logCfg)
+	cfg := config.Load()
 
+	// Logger
+	logCfg := logger.Config{Level: "debug", JSON: true}
+	log := logger.New(logCfg)
+
+	// Tracer
 	ctx := context.Background()
-	tracerCfg := tracer.Config{
-		ServiceName:  "api-gateway",
-		CollectorURL: "jaeger:4317", //  host.docker.internal:4317 для локальной разработки
+	tp, err := tracer.Init(ctx, tracer.Config{
+		ServiceName:  "transaction-service",
+		CollectorURL: "jaeger:4317",
 		Insecure:     true,
 		Timeout:      5 * time.Second,
-	}
-	tp, err := tracer.Init(ctx, tracerCfg)
+	})
 	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to init tracer")
+		log.Fatal().Err(err).Msg("failed to init tracer")
 	}
-	defer func() {
-		if err := tp.Shutdown(ctx); err != nil {
-			logger.Error().Err(err).Msg("failed to shutdown tracer")
-		}
-	}()
+	defer tp.Shutdown(ctx)
 
-	logger.Info().Msg("Service started with logger, tracer and metrics")
+	// PostgreSQL
+	db, err := sql.Open("postgres", cfg.PostgresDSN)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to connect to postgres")
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(10)
 
-	metrics.IncHTTPRequest("GET", "/health", "200")
+	// Redis
+	rdb := redisdb.NewClient(&redisdb.Options{
+		Addr:     cfg.RedisAddr,
+		Password: cfg.RedisPassword,
+		DB:       0,
+	})
+	if err := rdb.Ping(ctx).Err(); err != nil {
+		log.Fatal().Err(err).Msg("failed to connect to redis")
+	}
 
-	http.Handle("/metrics", promhttp.Handler())
+	// ClickHouse
+	clickhouseRepo, err := clickhouserepo.NewAnalyticsRepo(cfg.ClickHouseDSN)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to connect to clickhouse")
+	}
+	defer clickhouseRepo.Close()
 
+	// Репозитории
+	accountRepo := postgresrepo.NewAccountRepo(db)
+	transactionRepo := postgresrepo.NewTransactionRepo(db)
+
+	// Distributed Lock
+	locker := redisrepo.NewDistributedLocker(rdb)
+
+	// Kafka Producer
+	kafkaPublisher, err := kafka.NewKafkaPublisher(cfg.KafkaBrokers, cfg.KafkaTopic)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create kafka publisher")
+	}
+	defer kafkaPublisher.Close()
+
+	// Use cases
+	transferHandler := command.NewTransferHandler(accountRepo, transactionRepo, locker, db, kafkaPublisher)
+	_ = transferHandler // временно
+
+	// ---------- ЗАПУСК КОНСЬЮМЕРА ----------
+	// В main.go после создания продюсера:
+	dlqTopic := cfg.KafkaTopic + "_dlq" // "transactions_dlq"
+
+	consumer, err := kafka.NewEventConsumer(
+		cfg.KafkaBrokers,
+		"transaction-consumer-group",
+		cfg.KafkaTopic,
+		dlqTopic,
+		clickhouseRepo,
+		rdb,
+		log,
+		kafkaPublisher, // передаём продюсера для отправки в DLQ
+	)
+	if err != nil {
+		log.Fatal().Err(err).Msg("failed to create kafka consumer")
+	}
+	defer consumer.Close()
+
+	// Запускаем консьюмера в горутине
 	go func() {
-		logger.Info().Msg("Starting metrics server on :9091")
-		server := &http.Server{
-			Addr:         ":9091",
-			Handler:      nil,
-			ReadTimeout:  5 * time.Second,
-			WriteTimeout: 10 * time.Second,
-			IdleTimeout:  120 * time.Second,
-		}
-		if err := server.ListenAndServe(); err != nil {
-			logger.Error().Err(err).Msg("Metrics server failed")
+		log.Info().Msg("starting kafka consumer...")
+		if err := consumer.Start(ctx); err != nil && err != context.Canceled {
+			log.Error().Err(err).Msg("kafka consumer stopped with error")
 		}
 	}()
 
-	// Чтобы сервер не завершился сразу, добавь блокировку (например, select{})
-	select {}
+	// Graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
 
-	// Далее запускаем HTTP сервер, gRPC сервер и т.д.
+	log.Info().Msg("shutting down gracefully...")
 }
