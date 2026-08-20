@@ -26,6 +26,16 @@ jobs:
       - name: Verify Go version
         run: go version
 
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
       - name: Purge all caches
         run: |
           go clean -modcache
@@ -75,6 +85,16 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
 
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
       - name: Purge caches
         run: |
           go clean -modcache
@@ -98,10 +118,14 @@ jobs:
           for dir in api-gateway auth-service transaction-service notification-service shared; do
             echo "Testing $dir..."
             (cd $dir && go test -v -race -coverprofile=coverage_$dir.out ./...)
+            # копируем файл покрытия в корень backend для последующего объединения
+            cp $dir/coverage_$dir.out .
           done
-          # Объединяем coverage в один файл для артефакта
+          # Объединяем все coverage_*.out в один файл
           echo "mode: set" > coverage.out
-          for f in backend/coverage_*.out; do tail -n +2 "$f" >> coverage.out 2>/dev/null || true; done
+          for f in coverage_*.out; do
+            tail -n +2 "$f" >> coverage.out 2>/dev/null || true
+          done
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4
@@ -122,6 +146,16 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           check-latest: true
+
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
 
       - name: Purge caches
         run: |

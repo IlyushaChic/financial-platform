@@ -1,0 +1,39 @@
+{{- if .Values.authService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auth-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "financial-platform.labels" . | nindent 4 }}
+    service: auth-service
+spec:
+  replicas: {{ .Values.authService.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "financial-platform.selectorLabels" . | nindent 6 }}
+      service: auth-service
+  template:
+    metadata:
+      labels:
+        {{- include "financial-platform.selectorLabels" . | nindent 8 }}
+        service: auth-service
+    spec:
+      containers:
+      - name: auth-service
+        image: {{ .Values.global.imageRegistry }}/{{ .Values.authService.image.repository }}:{{ .Values.authService.image.tag }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        ports:
+        - containerPort: {{ .Values.authService.containerPort }}
+        env:
+        {{- range $key, $value := .Values.authService.env }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.authService.resources | nindent 10 }}
+        livenessProbe:
+          {{- toYaml .Values.authService.livenessProbe | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.authService.readinessProbe | nindent 10 }}
+{{- end }}

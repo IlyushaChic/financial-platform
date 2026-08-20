@@ -1,0 +1,19 @@
+{{- if .Values.authService.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: auth-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "financial-platform.labels" . | nindent 4 }}
+    service: auth-service
+spec:
+  selector:
+    {{- include "financial-platform.selectorLabels" . | nindent 4 }}
+    service: auth-service
+  type: {{ .Values.authService.service.type }}
+  ports:
+    - protocol: TCP
+      port: {{ .Values.authService.service.port }}
+      targetPort: {{ .Values.authService.containerPort }}
+{{- end }}

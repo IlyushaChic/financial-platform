@@ -1,0 +1,39 @@
+{{- if .Values.apiGateway.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "financial-platform.labels" . | nindent 4 }}
+    service: api-gateway
+spec:
+  replicas: {{ .Values.apiGateway.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "financial-platform.selectorLabels" . | nindent 6 }}
+      service: api-gateway
+  template:
+    metadata:
+      labels:
+        {{- include "financial-platform.selectorLabels" . | nindent 8 }}
+        service: api-gateway
+    spec:
+      containers:
+      - name: api-gateway
+        image: {{ .Values.global.imageRegistry }}/{{ .Values.apiGateway.image.repository }}:{{ .Values.apiGateway.image.tag }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        ports:
+        - containerPort: {{ .Values.apiGateway.containerPort }}
+        env:
+        {{- range $key, $value := .Values.apiGateway.env }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.apiGateway.resources | nindent 10 }}
+        livenessProbe:
+          {{- toYaml .Values.apiGateway.livenessProbe | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.apiGateway.readinessProbe | nindent 10 }}
+{{- end }}

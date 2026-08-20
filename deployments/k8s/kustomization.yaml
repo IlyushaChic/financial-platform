@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: financial-platform
+
+resources:
+  - namespace.yaml
+  - api-gateway/deployment.yaml
+  - api-gateway/service.yaml
+  - auth-service/deployment.yaml
+  - auth-service/service.yaml
+  - transaction-service/deployment.yaml
+  - transaction-service/service.yaml
+  - notification-service/deployment.yaml
+  - notification-service/service.yaml
+  - ingress.yaml

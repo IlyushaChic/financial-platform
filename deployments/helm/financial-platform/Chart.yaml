@@ -1,0 +1,9 @@
+apiVersion: v2
+name: financial-platform
+description: Helm chart for Financial Platform microservices
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+maintainers:
+  - name: Ilya
+    email: ilya.shinlko@inbox.ru

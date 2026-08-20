@@ -1,9 +1,0 @@
-go 1.26
-
-use (
-	./api-gateway
-	./auth-service
-	./notification-service
-	./shared
-	./transaction-service
-)

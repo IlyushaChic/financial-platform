@@ -1,0 +1,124 @@
+# Глобальные настройки
+global:
+  namespace: financial-platform
+  imagePullPolicy: IfNotPresent
+  imageRegistry: ""
+
+# Общие настройки для всех сервисов
+commonLabels:
+  app: financial-platform
+
+# Настройки API Gateway
+apiGateway:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: api-gateway
+    tag: latest
+  containerPort: 8080
+  service:
+    type: ClusterIP
+    port: 8080
+  env:
+    AUTH_SERVICE_ADDR: "auth-service:50051"
+    TRANSACTION_SERVICE_ADDR: "transaction-service:50052"
+    RABBITMQ_URL: "amqp://admin:admin@rabbitmq:5672/"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 10
+    periodSeconds: 10
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 8080
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+# Настройки Auth Service
+authService:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: auth-service
+    tag: latest
+  containerPort: 50051
+  service:
+    type: ClusterIP
+    port: 50051
+  env:
+    POSTGRES_DSN: "postgres://platform:secret@postgres:5432/platform?sslmode=disable"
+    REDIS_ADDR: "redis:6379"
+    JWT_SECRET: "supersecretkey"
+    GRPC_PORT: "50051"
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "200m"
+
+# Настройки Transaction Service
+transactionService:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: transaction-service
+    tag: latest
+  containerPort: 50052
+  service:
+    type: ClusterIP
+    port: 50052
+  env:
+    POSTGRES_DSN: "postgres://platform:secret@postgres:5432/platform?sslmode=disable"
+    REDIS_ADDR: "redis:6379"
+    KAFKA_BROKERS: "kafka:9092"
+    CLICKHOUSE_DSN: "clickhouse://clickhouse:9000?username=default&password="
+    RABBITMQ_URL: "amqp://admin:admin@rabbitmq:5672/"
+    GRPC_PORT: "50052"
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "200m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Настройки Notification Service
+notificationService:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: notification-service
+    tag: latest
+  containerPort: 8081
+  service:
+    type: ClusterIP
+    port: 8081
+  env:
+    RABBITMQ_URL: "amqp://admin:admin@rabbitmq:5672/"
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "100m"
+
+# Ingress
+ingress:
+  enabled: true
+  className: nginx
+  host: financial-platform.local
+  path: /
+  pathType: Prefix
+  annotations: {}

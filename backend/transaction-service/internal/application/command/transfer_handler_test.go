@@ -57,7 +57,6 @@ func (m *mockTransactionRepo) Update(ctx context.Context, tx *sql.Tx, tr *transa
 	return nil
 }
 
-// mockLock реализует интерфейс locker.Lock
 type mockLock struct {
 	unlockFunc func(ctx context.Context) error
 }
@@ -91,15 +90,36 @@ func (m *mockPublisher) Publish(ctx context.Context, event interface{}) error {
 	return nil
 }
 
+// ---------- Мок для NotificationProducer ----------
+type mockNotificationProducer struct {
+	publishFunc func(ctx context.Context, routingKey string, data interface{}) error
+	closeFunc   func() error
+}
+
+func (m *mockNotificationProducer) Publish(ctx context.Context, routingKey string, data interface{}) error {
+	if m.publishFunc != nil {
+		return m.publishFunc(ctx, routingKey, data)
+	}
+	return nil
+}
+
+func (m *mockNotificationProducer) Close() error {
+	if m.closeFunc != nil {
+		return m.closeFunc()
+	}
+	return nil
+}
+
 // ---------- Helper ----------
 func setupTestHandler(
 	accountRepo account.Repository,
 	transactionRepo transaction.Repository,
 	locker locker.Locker,
 	publisher messaging.EventPublisher,
+	notificationProducer NotificationProducer, // используем интерфейс из пакета
 	db *sql.DB,
 ) *TransferHandler {
-	return NewTransferHandler(accountRepo, transactionRepo, locker, db, publisher)
+	return NewTransferHandler(accountRepo, transactionRepo, locker, db, publisher, notificationProducer)
 }
 
 // ---------- Tests ----------
@@ -146,6 +166,11 @@ func TestTransferHandler_Success(t *testing.T) {
 			return nil
 		},
 	}
+	notificationProducer := &mockNotificationProducer{
+		publishFunc: func(ctx context.Context, routingKey string, data interface{}) error {
+			return nil
+		},
+	}
 
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
@@ -154,7 +179,7 @@ func TestTransferHandler_Success(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectCommit()
 
-	handler := setupTestHandler(accountRepo, transactionRepo, locker, publisher, db)
+	handler := setupTestHandler(accountRepo, transactionRepo, locker, publisher, notificationProducer, db)
 	cmd := TransferCommand{
 		FromAccountID: fromID,
 		ToAccountID:   toID,
@@ -194,12 +219,13 @@ func TestTransferHandler_InsufficientBalance(t *testing.T) {
 			return &mockLock{}, nil
 		},
 	}
+	notificationProducer := &mockNotificationProducer{}
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
 	mock.ExpectBegin()
 
-	handler := setupTestHandler(accountRepo, &mockTransactionRepo{}, locker, &mockPublisher{}, db)
+	handler := setupTestHandler(accountRepo, &mockTransactionRepo{}, locker, &mockPublisher{}, notificationProducer, db)
 	cmd := TransferCommand{
 		FromAccountID: fromID,
 		ToAccountID:   toID,
@@ -220,8 +246,9 @@ func TestTransferHandler_LockError(t *testing.T) {
 			return nil, errors.New("redis lock error")
 		},
 	}
+	notificationProducer := &mockNotificationProducer{}
 	db, _, _ := sqlmock.New()
-	handler := setupTestHandler(&mockAccountRepo{}, &mockTransactionRepo{}, locker, &mockPublisher{}, db)
+	handler := setupTestHandler(&mockAccountRepo{}, &mockTransactionRepo{}, locker, &mockPublisher{}, notificationProducer, db)
 	cmd := TransferCommand{
 		FromAccountID: "from-1",
 		ToAccountID:   "to-1",
@@ -235,8 +262,9 @@ func TestTransferHandler_LockError(t *testing.T) {
 
 func TestTransferHandler_SameAccount(t *testing.T) {
 	ctx := context.Background()
+	notificationProducer := &mockNotificationProducer{}
 	db, _, _ := sqlmock.New()
-	handler := setupTestHandler(&mockAccountRepo{}, &mockTransactionRepo{}, &mockLocker{}, &mockPublisher{}, db)
+	handler := setupTestHandler(&mockAccountRepo{}, &mockTransactionRepo{}, &mockLocker{}, &mockPublisher{}, notificationProducer, db)
 	cmd := TransferCommand{
 		FromAccountID: "same",
 		ToAccountID:   "same",
@@ -269,12 +297,13 @@ func TestTransferHandler_CurrencyMismatch(t *testing.T) {
 			return &mockLock{}, nil
 		},
 	}
+	notificationProducer := &mockNotificationProducer{}
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
 	mock.ExpectBegin()
 
-	handler := setupTestHandler(accountRepo, &mockTransactionRepo{}, locker, &mockPublisher{}, db)
+	handler := setupTestHandler(accountRepo, &mockTransactionRepo{}, locker, &mockPublisher{}, notificationProducer, db)
 	cmd := TransferCommand{
 		FromAccountID: fromID,
 		ToAccountID:   toID,
@@ -299,12 +328,13 @@ func TestTransferHandler_GetAccountError(t *testing.T) {
 			return &mockLock{}, nil
 		},
 	}
+	notificationProducer := &mockNotificationProducer{}
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
 	mock.ExpectBegin()
 
-	handler := setupTestHandler(accountRepo, &mockTransactionRepo{}, locker, &mockPublisher{}, db)
+	handler := setupTestHandler(accountRepo, &mockTransactionRepo{}, locker, &mockPublisher{}, notificationProducer, db)
 	cmd := TransferCommand{
 		FromAccountID: "from-1",
 		ToAccountID:   "to-1",
@@ -343,12 +373,13 @@ func TestTransferHandler_UpdateAccountError(t *testing.T) {
 			return &mockLock{}, nil
 		},
 	}
+	notificationProducer := &mockNotificationProducer{}
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
 	mock.ExpectBegin()
 
-	handler := setupTestHandler(accountRepo, &mockTransactionRepo{}, locker, &mockPublisher{}, db)
+	handler := setupTestHandler(accountRepo, &mockTransactionRepo{}, locker, &mockPublisher{}, notificationProducer, db)
 	cmd := TransferCommand{
 		FromAccountID: fromID,
 		ToAccountID:   toID,
@@ -392,12 +423,13 @@ func TestTransferHandler_CreateTransactionError(t *testing.T) {
 			return &mockLock{}, nil
 		},
 	}
+	notificationProducer := &mockNotificationProducer{}
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
 	mock.ExpectBegin()
 
-	handler := setupTestHandler(accountRepo, transactionRepo, locker, &mockPublisher{}, db)
+	handler := setupTestHandler(accountRepo, transactionRepo, locker, &mockPublisher{}, notificationProducer, db)
 	cmd := TransferCommand{
 		FromAccountID: fromID,
 		ToAccountID:   toID,
@@ -455,13 +487,14 @@ func TestTransferHandler_EventPublished(t *testing.T) {
 			return nil
 		},
 	}
+	notificationProducer := &mockNotificationProducer{}
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)
 	defer db.Close()
 	mock.ExpectBegin()
 	mock.ExpectCommit()
 
-	handler := setupTestHandler(accountRepo, transactionRepo, locker, publisher, db)
+	handler := setupTestHandler(accountRepo, transactionRepo, locker, publisher, notificationProducer, db)
 	cmd := TransferCommand{
 		FromAccountID: fromID,
 		ToAccountID:   toID,

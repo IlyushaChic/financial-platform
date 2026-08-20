@@ -1,0 +1,5 @@
+FROM alpine:latest
+WORKDIR /app
+COPY bin/auth-service .
+EXPOSE 50051
+CMD ["./auth-service"]

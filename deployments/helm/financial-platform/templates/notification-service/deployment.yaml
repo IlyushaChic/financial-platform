@@ -1,0 +1,39 @@
+{{- if .Values.notificationService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "financial-platform.labels" . | nindent 4 }}
+    service: notification-service
+spec:
+  replicas: {{ .Values.notificationService.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "financial-platform.selectorLabels" . | nindent 6 }}
+      service: notification-service
+  template:
+    metadata:
+      labels:
+        {{- include "financial-platform.selectorLabels" . | nindent 8 }}
+        service: notification-service
+    spec:
+      containers:
+      - name: notification-service
+        image: {{ .Values.global.imageRegistry }}/{{ .Values.notificationService.image.repository }}:{{ .Values.notificationService.image.tag }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        ports:
+        - containerPort: {{ .Values.notificationService.containerPort }}
+        env:
+        {{- range $key, $value := .Values.notificationService.env }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.notificationService.resources | nindent 10 }}
+        livenessProbe:
+          {{- toYaml .Values.notificationService.livenessProbe | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.notificationService.readinessProbe | nindent 10 }}
+{{- end }}

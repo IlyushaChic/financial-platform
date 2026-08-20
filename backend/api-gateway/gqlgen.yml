@@ -7,7 +7,6 @@ model:
 resolver:
   layout: follow-schema
   dir: internal/graphql/resolver
-  filename: internal/graphql/resolver/resolver.go
   package: resolver
 models:
   ID:

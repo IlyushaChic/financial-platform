@@ -1,0 +1,39 @@
+{{- if .Values.transactionService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transaction-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "financial-platform.labels" . | nindent 4 }}
+    service: transaction-service
+spec:
+  replicas: {{ .Values.transactionService.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "financial-platform.selectorLabels" . | nindent 6 }}
+      service: transaction-service
+  template:
+    metadata:
+      labels:
+        {{- include "financial-platform.selectorLabels" . | nindent 8 }}
+        service: transaction-service
+    spec:
+      containers:
+      - name: transaction-service
+        image: {{ .Values.global.imageRegistry }}/{{ .Values.transactionService.image.repository }}:{{ .Values.transactionService.image.tag }}
+        imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+        ports:
+        - containerPort: {{ .Values.transactionService.containerPort }}
+        env:
+        {{- range $key, $value := .Values.transactionService.env }}
+        - name: {{ $key }}
+          value: {{ $value | quote }}
+        {{- end }}
+        resources:
+          {{- toYaml .Values.transactionService.resources | nindent 10 }}
+        livenessProbe:
+          {{- toYaml .Values.transactionService.livenessProbe | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.transactionService.readinessProbe | nindent 10 }}
+{{- end }}

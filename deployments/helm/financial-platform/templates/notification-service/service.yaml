@@ -1,0 +1,19 @@
+{{- if .Values.notificationService.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "financial-platform.labels" . | nindent 4 }}
+    service: notification-service
+spec:
+  selector:
+    {{- include "financial-platform.selectorLabels" . | nindent 4 }}
+    service: notification-service
+  type: {{ .Values.notificationService.service.type }}
+  ports:
+    - protocol: TCP
+      port: {{ .Values.notificationService.service.port }}
+      targetPort: {{ .Values.notificationService.containerPort }}
+{{- end }}

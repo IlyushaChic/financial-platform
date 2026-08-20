@@ -1,0 +1,19 @@
+{{- if .Values.transactionService.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: transaction-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "financial-platform.labels" . | nindent 4 }}
+    service: transaction-service
+spec:
+  selector:
+    {{- include "financial-platform.selectorLabels" . | nindent 4 }}
+    service: transaction-service
+  type: {{ .Values.transactionService.service.type }}
+  ports:
+    - protocol: TCP
+      port: {{ .Values.transactionService.service.port }}
+      targetPort: {{ .Values.transactionService.containerPort }}
+{{- end }}

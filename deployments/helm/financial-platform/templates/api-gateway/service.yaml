@@ -1,0 +1,19 @@
+{{- if .Values.apiGateway.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-gateway
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "financial-platform.labels" . | nindent 4 }}
+    service: api-gateway
+spec:
+  selector:
+    {{- include "financial-platform.selectorLabels" . | nindent 4 }}
+    service: api-gateway
+  type: {{ .Values.apiGateway.service.type }}
+  ports:
+    - protocol: TCP
+      port: {{ .Values.apiGateway.service.port }}
+      targetPort: {{ .Values.apiGateway.containerPort }}
+{{- end }}

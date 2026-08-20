@@ -1,0 +1,5 @@
+FROM alpine:latest
+WORKDIR /app
+COPY bin/transaction-service .
+EXPOSE 50052
+CMD ["./transaction-service"]

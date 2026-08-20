@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: transaction-service
+  namespace: financial-platform
+  labels:
+    app: transaction-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: transaction-service
+  template:
+    metadata:
+      labels:
+        app: transaction-service
+    spec:
+      containers:
+      - name: transaction-service
+        image: your-registry/transaction-service:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 50052
+        env:
+        - name: POSTGRES_DSN
+          value: "postgres://platform:secret@postgres:5432/platform?sslmode=disable"
+        - name: REDIS_ADDR
+          value: "redis:6379"
+        - name: KAFKA_BROKERS
+          value: "kafka:9092"
+        - name: CLICKHOUSE_DSN
+          value: "clickhouse://clickhouse:9000?username=default&password="
+        - name: RABBITMQ_URL
+          value: "amqp://admin:admin@rabbitmq:5672/"
+        - name: GRPC_PORT
+          value: "50052"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "200m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"

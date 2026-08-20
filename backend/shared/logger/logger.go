@@ -8,14 +8,12 @@ import (
 	"github.com/rs/zerolog/pkgerrors"
 )
 
-// Config определяет настройки логгера.
 type Config struct {
 	JSON       bool   `env:"LOG_JSON" default:"true"`
 	Level      string `env:"LOG_LEVEL" default:"info"`
 	TimeFormat string `env:"LOG_TIME_FORMAT" default:"2006-01-02T15:04:05.000Z07:00"`
 }
 
-// New создаёт и настраивает глобальный логгер.
 func New(cfg Config) *zerolog.Logger {
 	zerolog.TimeFieldFormat = cfg.TimeFormat
 	zerolog.ErrorStackMarshaler = pkgerrors.MarshalStack
@@ -42,7 +40,6 @@ func New(cfg Config) *zerolog.Logger {
 	return &logger
 }
 
-// MustNew создаёт логгер или паникует при ошибке.
 func MustNew(cfg Config) *zerolog.Logger {
 	log := New(cfg)
 	return log

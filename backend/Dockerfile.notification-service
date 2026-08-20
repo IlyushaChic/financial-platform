@@ -1,0 +1,5 @@
+FROM alpine:latest
+WORKDIR /app
+COPY bin/notification-service .
+EXPOSE 8081
+CMD ["./notification-service"]

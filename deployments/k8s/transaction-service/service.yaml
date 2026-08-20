@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: transaction-service
+  namespace: financial-platform
+spec:
+  selector:
+    app: transaction-service
+  ports:
+  - port: 50052
+    targetPort: 50052
+    name: grpc
+  type: ClusterIP
